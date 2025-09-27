@@ -1,5 +1,10 @@
 # 🇨🇿 Czech Ozone Historical Analysis
 
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Data Source: CHMI](https://img.shields.io/badge/Data-CHMI-green.svg)](https://www.chmi.cz)
+[![UV](https://img.shields.io/badge/package%20manager-UV-orange.svg)](https://github.com/astral-sh/uv)
+
 ## 🎯 Business Impact
 Providing accessible historical ozone pollution analysis to help Czech citizens, researchers, and policymakers understand air quality trends and make informed health decisions during high pollution episodes.
 
