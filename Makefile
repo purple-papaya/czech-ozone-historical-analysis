@@ -42,11 +42,11 @@ test:  ## Run tests with pytest
 
 lint:  ## Check code quality with ruff
 	@echo "🔍 Linting code..."
-	@uv run ruff check src/
+	@uv run ruff check src/ tests/ notebooks/
 
 format:  ## Format code with ruff
 	@echo "✨ Formatting code..."
-	@uv run ruff format src/ tests/
+	@uv run ruff format src/ tests/ notebooks/
 	@echo "✅ Code formatted!"
 
 run:  ## Run main analysis script
