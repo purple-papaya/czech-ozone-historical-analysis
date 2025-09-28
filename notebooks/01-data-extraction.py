@@ -21,81 +21,11 @@ def _():
 
 
 @app.cell
-def _(Any, Dict, Optional, Path, json, logger, pl, validate_data):
-    def extract_registration_list(
-        year: int,
-        write_data: bool = True,
-        input_dir: Path = Path('./data/raw'),
-        output_dir: Optional[Path] = Path('./data/interim')
-    ) -> pl.DataFrame:
-        """
-        Extract meteostation registration information from JSON for a specific year.
-        """
-
-        input_file = input_dir / str(year) / f'{year}_RegistrationList.json'
-    
-        try:
-            logger.info(f"Loading registration data from {input_file}")
-            with open(input_file, 'r', encoding='utf-8') as f:
-                registration_data = json.load(f)
-        except FileNotFoundError:
-            error_msg = f"Registration file not found: {input_file}"
-            logger.error(error_msg)
-            raise FileNotFoundError(error_msg)
-        except json.JSONDecodeError as e:
-            error_msg = f"Invalid JSON in registration file: {e}"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-    
-        # Extract and flatten data
-        registration_list = []
-        error_count = 0
-    
-        # Check for required top-level structure
-        if 'RegionList' not in registration_data:
-            raise ValueError("Missing 'RegionList' in registration data")
-    
-        for region in registration_data['RegionList']:
-            for locality in region.get('LocalityList', []):
-                for substance in locality.get('RegistrationList', []):
-                    try:
-                        registration_dict = _extract_registration_record(
-                            region, locality, substance, validate_data
-                        )
-                        if registration_dict:
-                            registration_list.append(registration_dict)
-                    except Exception as e:
-                        error_count += 1
-                        logger.warning(
-                            f"Error extracting record for {locality.get('Name', 'Unknown')}: {e}"
-                        )
-                        if error_count > 100:  # Fail if too many errors
-                            raise ValueError(f"Too many extraction errors ({error_count})")
-    
-        if not registration_list:
-            logger.warning("No registration records were extracted")
-            return pl.DataFrame()  # Return empty DataFrame with no schema
-    
-        df_registration = pl.DataFrame(registration_list)
-        logger.info(f"Successfully extracted {len(df_registration)} registration records")
-
-        if write_data:
-            output_file = output_dir / f'{year}_registration_list.csv'
-            try:
-                df_registration.write_csv(output_file)
-                logger.info(f"Data saved to {output_file}")
-            except Exception as e:
-                logger.error(f"Failed to save data: {e}")
-                raise
-    
-        return df_registration
-
-
+def _(Any, Dict, Optional, Path, json, logger, pl, validate):
     def _extract_registration_record(
         region: Dict[str, Any],
         locality: Dict[str, Any],
-        substance: Dict[str, Any],
-        validate: bool = True
+        substance: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """
         Extract a single registration record from nested dictionaries.
@@ -158,6 +88,88 @@ def _(Any, Dict, Optional, Path, json, logger, pl, validate_data):
         registration_dict['ActiveTo'] = substance.get('ActiveTo')
     
         return registration_dict
+
+    def extract_registration_list(
+        input_path: Path = None,
+        output_path: Path = None,
+        write_data: bool = True
+    ) -> pl.DataFrame:
+        """
+        Extract meteostation registration information from JSON for a specific year.
+        """
+
+        try:
+            logger.info(f"Loading registration data from {input_path}")
+            with open(input_path, 'r', encoding='utf-8') as f:
+                registration_data = json.load(f)
+        except FileNotFoundError:
+            error_msg = f"Registration file not found: {input_path}"
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+        except json.JSONDecodeError as e:
+            error_msg = f"Invalid JSON in registration file: {e}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+    
+        # Extract and flatten data
+        registration_list = []
+        error_count = 0
+    
+        # Check for required top-level structure
+        if 'RegionList' not in registration_data:
+            raise ValueError("Missing 'RegionList' in registration data")
+    
+        for region in registration_data['RegionList']:
+            for locality in region.get('LocalityList', []):
+                for substance in locality.get('RegistrationList', []):
+                    try:
+                        registration_dict = _extract_registration_record(
+                            region, locality, substance
+                        )
+                        if registration_dict:
+                            registration_list.append(registration_dict)
+                    except Exception as e:
+                        error_count += 1
+                        logger.warning(
+                            f"Error extracting record for {locality.get('Name', 'Unknown')}: {e}"
+                        )
+                        if error_count > 100:  # Fail if too many errors
+                            raise ValueError(f"Too many extraction errors ({error_count})")
+    
+        if not registration_list:
+            logger.warning("No registration records were extracted")
+            return pl.DataFrame()  # Return empty DataFrame with no schema
+    
+        df_registration = pl.DataFrame(registration_list)
+        logger.info(f"Successfully extracted {len(df_registration)} registration records")
+
+        if write_data:
+            try:
+                df_registration.write_csv(output_path)
+                logger.info(f"Data saved to {output_path}")
+            except Exception as e:
+                logger.error(f"Failed to save data: {e}")
+                raise
+    
+        return df_registration
+    return (extract_registration_list,)
+
+
+@app.cell
+def _(Path, extract_registration_list):
+    directory_path = Path('./data/raw/')
+    file_pattern = '*.json'
+
+    data_paths = []
+    for dir in directory_path.iterdir():
+        if dir.is_dir():
+            for file in dir.iterdir():
+                if file.match(path_pattern=file_pattern):
+                    data_paths.append(file)
+
+    for path in data_paths:
+        year = str(path)[9:13]
+        extract_registration_list(input_path=path, output_path=f'./data/interim/{year}_registration_list.csv', write_data=True)
     return
 
 
