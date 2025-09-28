@@ -6,70 +6,158 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
-    import marimo as mo
-    return
-
-
-@app.cell
-def _():
-    import polars as pl
     import json
-    return json, pl
+    import polars as pl
+    from typing import Optional, Dict, Any, List
+
+    from pathlib import Path
+
+    import marimo as mo
+
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    return Any, Dict, Optional, Path, json, logger, pl
 
 
 @app.cell
-def _(json, pl):
-    # Parse and flatten nested JSON
-    registration_dict = {}
+def _(Any, Dict, Optional, Path, json, logger, pl, validate_data):
+    def extract_registration_list(
+        year: int,
+        write_data: bool = True,
+        input_dir: Path = Path('./data/raw'),
+        output_dir: Optional[Path] = Path('./data/interim')
+    ) -> pl.DataFrame:
+        """
+        Extract meteostation registration information from JSON for a specific year.
+        """
 
-    with open('./data/raw/1969/1969_RegistrationList.json', 'r') as f:
-        registration_data = json.load(f)
-
+        input_file = input_dir / str(year) / f'{year}_RegistrationList.json'
+    
+        try:
+            logger.info(f"Loading registration data from {input_file}")
+            with open(input_file, 'r', encoding='utf-8') as f:
+                registration_data = json.load(f)
+        except FileNotFoundError:
+            error_msg = f"Registration file not found: {input_file}"
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+        except json.JSONDecodeError as e:
+            error_msg = f"Invalid JSON in registration file: {e}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+    
+        # Extract and flatten data
+        registration_list = []
+        error_count = 0
+    
+        # Check for required top-level structure
+        if 'RegionList' not in registration_data:
+            raise ValueError("Missing 'RegionList' in registration data")
+    
         for region in registration_data['RegionList']:
-            for locality in region['LocalityList']:
-                for substance in locality['RegistrationList']:
-                    # Extract region info
-                    registration_dict['RegionCode'] = region['Code']
-                    registration_dict['RegionName'] = region['Name']
+            for locality in region.get('LocalityList', []):
+                for substance in locality.get('RegistrationList', []):
+                    try:
+                        registration_dict = _extract_registration_record(
+                            region, locality, substance, validate_data
+                        )
+                        if registration_dict:
+                            registration_list.append(registration_dict)
+                    except Exception as e:
+                        error_count += 1
+                        logger.warning(
+                            f"Error extracting record for {locality.get('Name', 'Unknown')}: {e}"
+                        )
+                        if error_count > 100:  # Fail if too many errors
+                            raise ValueError(f"Too many extraction errors ({error_count})")
     
-                    # Extract locality info
-                    registration_dict['LocalityCode'] = locality['Code']
-                    registration_dict['LocalityName'] = locality['Name']
+        if not registration_list:
+            logger.warning("No registration records were extracted")
+            return pl.DataFrame()  # Return empty DataFrame with no schema
     
-                    registration_dict['OwnerAbbrev'] = locality['Owner']['Abbrev']
-                    registration_dict['OwnerName'] = locality['Owner']['Name']
+        df_registration = pl.DataFrame(registration_list)
+        logger.info(f"Successfully extracted {len(df_registration)} registration records")
+
+        if write_data:
+            output_file = output_dir / f'{year}_registration_list.csv'
+            try:
+                df_registration.write_csv(output_file)
+                logger.info(f"Data saved to {output_file}")
+            except Exception as e:
+                logger.error(f"Failed to save data: {e}")
+                raise
     
-                    registration_dict['Latitude'] = locality['geometry']['coordinates'][0]
-                    registration_dict['Longitude'] = locality['geometry']['coordinates'][1]
-                    registration_dict['Altitude'] = locality['geometry']['coordinates'][2]
+        return df_registration
+
+
+    def _extract_registration_record(
+        region: Dict[str, Any],
+        locality: Dict[str, Any],
+        substance: Dict[str, Any],
+        validate: bool = True
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Extract a single registration record from nested dictionaries.
+        """
     
-                    registration_dict['CoordinateReferenceSystem'] = locality['crs']['properties']['name']
-                    registration_dict['Classification'] = locality['Classification']
-
-                    # Extract measured substances info
-                    registration_dict['SubstanceId'] = substance['Id']
-                    registration_dict['SubstanceAbbrev'] = substance['Component']['Abbrev']
-                    registration_dict['SubstanceName'] = substance['Component']['Name']
-                    registration_dict['SubstanceUnit'] = substance['Component']['Unit']
-
-                    registration_dict['DataInterval'] = substance['DataInterval']
-                    registration_dict['SamplingInterval'] = substance['SamplingInterval']
-
-                    registration_dict['MeasureMethodAbbrev'] = substance['MeasureMethod']['Abbrev']
-                    registration_dict['MeasureMethodName'] = substance['MeasureMethod']['Name']
-
-                    registration_dict['ActiveFrom'] = substance['ActiveFrom']
-                    registration_dict['ActiveTo'] = substance['ActiveTo']
-
-        registration_dataframe = pl.DataFrame(data=registration_dict)
-        registration_dataframe.write_csv('./data/raw/1969/1969_registration_list.csv')
-
-
-
-
-            
-
+        registration_dict = {}
     
+        # Extract region info
+        registration_dict['RegionCode'] = region.get('Code')
+        registration_dict['RegionName'] = region.get('Name')
+    
+        # Extract locality info
+        registration_dict['LocalityCode'] = locality.get('Code')
+        registration_dict['LocalityName'] = locality.get('Name')
+    
+        # Extract owner info
+        owner = locality.get('Owner', {})
+        registration_dict['OwnerAbbrev'] = owner.get('Abbrev')
+        registration_dict['OwnerName'] = owner.get('Name')
+    
+        # Extract coordinates
+        coordinates = locality.get('geometry', {}).get('coordinates', [])
+        if len(coordinates) >= 3:
+            registration_dict['Longitude'] = coordinates[0]
+            registration_dict['Latitude'] = coordinates[1]   
+            registration_dict['Altitude'] = coordinates[2]
+        else:
+            registration_dict['Longitude'] = None
+            registration_dict['Latitude'] = None
+            registration_dict['Altitude'] = None
+            if validate:
+                logger.debug(f"Missing coordinates for locality {locality.get('Name')}")
+    
+        # Extract CRS information
+        crs_properties = locality.get('crs', {}).get('properties', {})
+        registration_dict['CoordinateReferenceSystem'] = crs_properties.get('name')
+    
+        # Extract classification
+        registration_dict['Classification'] = locality.get('Classification')
+    
+        # Extract substance/measurement info
+        registration_dict['SubstanceId'] = substance.get('Id')
+
+        component = substance.get('Component', {})
+        registration_dict['SubstanceAbbrev'] = component.get('Abbrev')
+        registration_dict['SubstanceName'] = component.get('Name')
+        registration_dict['SubstanceUnit'] = component.get('Unit')
+    
+        # Extract measurement intervals
+        registration_dict['DataInterval'] = substance.get('DataInterval')
+        registration_dict['SamplingInterval'] = substance.get('SamplingInterval')
+    
+        # Extract measurement method
+        measure_method = substance.get('MeasureMethod', {})
+        registration_dict['MeasureMethodAbbrev'] = measure_method.get('Abbrev')
+        registration_dict['MeasureMethodName'] = measure_method.get('Name')
+    
+        # Extract active period
+        registration_dict['ActiveFrom'] = substance.get('ActiveFrom')
+        registration_dict['ActiveTo'] = substance.get('ActiveTo')
+    
+        return registration_dict
     return
 
 
