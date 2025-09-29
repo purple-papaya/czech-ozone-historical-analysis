@@ -339,6 +339,22 @@ def _():
 
 @app.cell
 def _():
+    # one-time add substance-place-id to required data
+    # moved_data_files = extract_data_paths(dir_path='./data/', file_pattern='*_data.csv')
+
+    # for moved_data in moved_data_files:
+    #     moved_data_file = pl.read_csv(moved_data, schema_overrides={'VALUE': pl.Float64})
+
+    #     sub_place_year_id = str(moved_data).split('_')[1]
+
+    #     moved_data_file = moved_data_file.with_columns(pl.lit(sub_place_year_id).alias('SUB_PLACE_YEAR_ID'))
+
+    #     moved_data_file.write_csv(moved_data)
+    return
+
+
+@app.cell
+def _():
     return
 
 
