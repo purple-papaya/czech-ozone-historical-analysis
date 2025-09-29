@@ -319,6 +319,26 @@ def _():
 
 @app.cell
 def _():
+    # one-time remove diacritics from value type files
+    # moved_value_types = extract_data_paths(dir_path='./data/', file_pattern='*_ValueType.csv')
+
+    # for moved_value_type in moved_value_types:
+    #     moved_file = pl.read_csv(moved_value_type)
+    #     for column in moved_file.columns:
+    #         if moved_file[column].dtype == pl.Utf8:  # String columns in Polars
+    #             moved_file = moved_file.with_columns(
+    #                 pl.col(column).map_elements(
+    #                     lambda x: remove_diacritics(x) if x is not None else None,
+    #                     return_dtype=pl.Utf8
+    #                 ).alias(column)
+    #             )
+            
+    #     moved_file.write_csv(moved_value_type)
+    return
+
+
+@app.cell
+def _():
     return
 
 
