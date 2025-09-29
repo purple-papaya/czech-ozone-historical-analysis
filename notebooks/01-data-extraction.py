@@ -11,13 +11,15 @@ def _():
     from typing import Optional, Dict, Any, List
 
     from pathlib import Path
+    import zipfile
+    import os
 
     import marimo as mo
 
     import logging
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-    return Any, Dict, Optional, Path, json, logger, pl
+    return Any, Dict, Optional, Path, json, logger, os, pl, zipfile
 
 
 @app.cell
@@ -30,7 +32,7 @@ def _():
         'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o', 'ō': 'o', 'ŏ': 'o', 'ő': 'o',
         'ú': 'u', 'ù': 'u', 'ů': 'u', 'ü': 'u', 'û': 'u', 'ū': 'u', 'ŭ': 'u',
         'ý': 'y', 'ÿ': 'y', 'ŷ': 'y',
-    
+
         # Lowercase consonants
         'č': 'c', 'ć': 'c', 'ç': 'c', 'ĉ': 'c',
         'ď': 'd', 'đ': 'd',
@@ -40,7 +42,7 @@ def _():
         'ť': 't', 'ţ': 't', 'ŧ': 't',
         'ž': 'z', 'ź': 'z', 'ż': 'z',
         'ľ': 'l', 'ĺ': 'l', 'ł': 'l',
-    
+
         # Uppercase vowels
         'Á': 'A', 'À': 'A', 'Ä': 'A', 'Â': 'A', 'Ǎ': 'A', 'Ă': 'A', 'Ā': 'A',
         'É': 'E', 'È': 'E', 'Ě': 'E', 'Ë': 'E', 'Ê': 'E', 'Ē': 'E', 'Ė': 'E',
@@ -48,7 +50,7 @@ def _():
         'Ó': 'O', 'Ò': 'O', 'Ö': 'O', 'Ô': 'O', 'Ō': 'O', 'Ŏ': 'O', 'Ő': 'O',
         'Ú': 'U', 'Ù': 'U', 'Ů': 'U', 'Ü': 'U', 'Û': 'U', 'Ū': 'U', 'Ŭ': 'U',
         'Ý': 'Y', 'Ÿ': 'Y', 'Ŷ': 'Y',
-    
+
         # Uppercase consonants
         'Č': 'C', 'Ć': 'C', 'Ç': 'C', 'Ĉ': 'C',
         'Ď': 'D', 'Đ': 'D',
@@ -71,8 +73,10 @@ def _(
     Path,
     json,
     logger,
+    os,
     pl,
     validate,
+    zipfile,
 ):
     def remove_diacritics(text: str) -> str:
         """
@@ -80,7 +84,7 @@ def _(
         """
         if not isinstance(text, str):
             return text
-    
+
         return ''.join(CZECH_DIACRITIC_MAP.get(char, char) for char in text)
 
     def remove_diacritics_from_object(obj: Any, process_keys: bool = False) -> Any:
@@ -89,20 +93,20 @@ def _(
         """
         if obj is None:
             return obj
-    
+
         if isinstance(obj, str):
             return remove_diacritics(obj)
-    
+
         if isinstance(obj, list):
             return [remove_diacritics_from_object(item, process_keys) for item in obj]
-    
+
         if isinstance(obj, dict):
             result = {}
             for key, value in obj.items():
                 new_key = remove_diacritics(key) if process_keys else key
                 result[new_key] = remove_diacritics_from_object(value, process_keys)
             return result
-    
+
         # For other types (int, float, bool, etc.), return as is
         return obj
 
@@ -235,24 +239,81 @@ def _(
                 raise
 
         return df_registration
-    return (extract_registration_list,)
+
+    def extract_data_paths(dir_path: str, file_pattern: str) -> list:
+        '''Extract data paths from a directory according to pattern.'''
+        directory_path = Path(dir_path)
+        file_pattern = file_pattern
+
+        data_paths = []
+        for dir in directory_path.iterdir():
+            if dir.is_dir():
+                for file in dir.iterdir():
+                    if file.match(path_pattern=file_pattern):
+                        data_paths.append(file)
+
+        return data_paths
+
+    def unzip_and_delete(folder):
+        '''Unzip and delete zipped folders.'''
+        # Extract the zip file
+        try:
+            with zipfile.ZipFile(folder, 'r') as zip_ref:
+                # Extract to subfolder named after the zip
+                extract_to = Path(str(folder)[:-4])
+                zip_ref.extractall(extract_to)
+                print(f"Extracted: {folder}")
+        
+            # Delete the zip file after successful extraction
+            os.remove(folder)
+            print(f"Deleted: {folder}")
+        
+        except Exception as e:
+            print(f"Error with {folder}: {e}")
+    return extract_data_paths, extract_registration_list
 
 
 @app.cell
-def _(Path, extract_registration_list):
-    directory_path = Path('./data/raw/')
-    file_pattern = '*.json'
+def _(extract_data_paths, extract_registration_list):
+    registration_data_paths = extract_data_paths(dir_path='./data/raw/', file_pattern='*.csv')
 
-    data_paths = []
-    for dir in directory_path.iterdir():
-        if dir.is_dir():
-            for file in dir.iterdir():
-                if file.match(path_pattern=file_pattern):
-                    data_paths.append(file)
+    for registration_path in registration_data_paths:
+        year = str(registration_path)[9:13]
+        extract_registration_list(input_path=registration_path, output_path=f'./data/interim/{year}_registration_list.csv', write_data=True)
+    return
 
-    for path in data_paths:
-        year = str(path)[9:13]
-        extract_registration_list(input_path=path, output_path=f'./data/interim/{year}_registration_list.csv', write_data=True)
+
+@app.cell
+def _():
+    # one-time unzip and delete zipped folders
+    # zip_file_data_paths = extract_data_paths(dir_path='./data/raw/', file_pattern='*.zip')
+    # for zipped_folder in zip_file_data_paths:
+    #     unzip_and_delete(zipped_folder)
+    return
+
+
+@app.cell
+def _():
+    # one-time rename and move of required data files
+    # for folder in Path('./data/raw/').iterdir():
+    #     if folder.is_dir():
+    #         data_file_data_paths = extract_data_paths(dir_path=folder, file_pattern='data.csv')
+    #         value_type_file_data_paths = extract_data_paths(dir_path=folder, file_pattern='ValueType.csv')
+
+    #     data_file_target_names = [Path('./data/interim/' + str(x).split('/')[3] + '_' + str(x).split('/')[4]) for x in data_file_data_paths]
+    #     value_type_file_target_names = [Path('./data/interim/' + str(x).split('/')[3] + '_' + str(x).split('/')[4]) for x in value_type_file_data_paths]
+
+    #     for data_file_data_path, data_file_target_name in zip(data_file_data_paths, data_file_target_names):
+    #         try:
+    #             data_file_data_path.rename(data_file_target_name)
+    #         except FileNotFoundError as e:
+    #             print(e)
+    #     for value_type_file_data_path, value_type_file_target_name in zip(value_type_file_data_paths, value_type_file_target_names):
+    #         try:
+    #             value_type_file_data_path.rename(value_type_file_target_name)
+    #         except FileNotFoundError as e:
+    #             print(e)
+        
     return
 
 
