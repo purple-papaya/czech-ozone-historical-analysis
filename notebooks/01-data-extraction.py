@@ -19,7 +19,7 @@ def _():
     import logging
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-    return Any, Dict, Optional, Path, json, logger, os, pl, zipfile
+    return Any, Dict, Optional, Path, json, logger, mo, os, pl, zipfile
 
 
 @app.cell
@@ -270,12 +270,21 @@ def _(
         
         except Exception as e:
             print(f"Error with {folder}: {e}")
-    return extract_data_paths, extract_registration_list
+
+        
+    return (
+        extract_data_paths,
+        extract_registration_list,
+        remove_diacritics,
+        unzip_and_delete,
+    )
 
 
 @app.cell
-def _(extract_data_paths, extract_registration_list):
-    registration_data_paths = extract_data_paths(dir_path='./data/raw/', file_pattern='*.csv')
+def _(extract_data_paths, extract_registration_list, mo):
+    mo.stop()
+    # one-time extraction of registrations lists
+    registration_data_paths = extract_data_paths(dir_path='./data/raw/', file_pattern='*.json')
 
     for registration_path in registration_data_paths:
         year = str(registration_path)[9:13]
@@ -284,72 +293,138 @@ def _(extract_data_paths, extract_registration_list):
 
 
 @app.cell
-def _():
+def _(extract_data_paths, mo, unzip_and_delete):
+    mo.stop()
     # one-time unzip and delete zipped folders
-    # zip_file_data_paths = extract_data_paths(dir_path='./data/raw/', file_pattern='*.zip')
-    # for zipped_folder in zip_file_data_paths:
-    #     unzip_and_delete(zipped_folder)
+    zip_file_data_paths = extract_data_paths(dir_path='./data/raw/', file_pattern='*.zip')
+    for zipped_folder in zip_file_data_paths:
+        unzip_and_delete(zipped_folder)
     return
 
 
 @app.cell
-def _():
+def _(Path, extract_data_paths, mo):
+    mo.stop()
     # one-time rename and move of required data files
-    # for folder in Path('./data/raw/').iterdir():
-    #     if folder.is_dir():
-    #         data_file_data_paths = extract_data_paths(dir_path=folder, file_pattern='data.csv')
-    #         value_type_file_data_paths = extract_data_paths(dir_path=folder, file_pattern='ValueType.csv')
+    for folder in Path('./data/raw/').iterdir():
+        if folder.is_dir():
+            data_file_data_paths = extract_data_paths(dir_path=folder, file_pattern='data.csv')
+            value_type_file_data_paths = extract_data_paths(dir_path=folder, file_pattern='ValueType.csv')
 
-    #     data_file_target_names = [Path('./data/interim/' + str(x).split('/')[3] + '_' + str(x).split('/')[4]) for x in data_file_data_paths]
-    #     value_type_file_target_names = [Path('./data/interim/' + str(x).split('/')[3] + '_' + str(x).split('/')[4]) for x in value_type_file_data_paths]
+        data_file_target_names = [Path('./data/interim/' + str(x).split('/')[3] + '_' + str(x).split('/')[4]) for x in data_file_data_paths]
+        value_type_file_target_names = [Path('./data/interim/' + str(x).split('/')[3] + '_' + str(x).split('/')[4]) for x in value_type_file_data_paths]
 
-    #     for data_file_data_path, data_file_target_name in zip(data_file_data_paths, data_file_target_names):
-    #         try:
-    #             data_file_data_path.rename(data_file_target_name)
-    #         except FileNotFoundError as e:
-    #             print(e)
-    #     for value_type_file_data_path, value_type_file_target_name in zip(value_type_file_data_paths, value_type_file_target_names):
-    #         try:
-    #             value_type_file_data_path.rename(value_type_file_target_name)
-    #         except FileNotFoundError as e:
-    #             print(e)
+        for data_file_data_path, data_file_target_name in zip(data_file_data_paths, data_file_target_names):
+            try:
+                data_file_data_path.rename(data_file_target_name)
+            except FileNotFoundError as e:
+                print(e)
+        for value_type_file_data_path, value_type_file_target_name in zip(value_type_file_data_paths, value_type_file_target_names):
+            try:
+                value_type_file_data_path.rename(value_type_file_target_name)
+            except FileNotFoundError as e:
+                print(e)
         
     return
 
 
 @app.cell
-def _():
+def _(extract_data_paths, mo, pl, remove_diacritics):
+    mo.stop()
     # one-time remove diacritics from value type files
-    # moved_value_types = extract_data_paths(dir_path='./data/', file_pattern='*_ValueType.csv')
+    moved_value_types = extract_data_paths(dir_path='./data/', file_pattern='*_ValueType.csv')
 
-    # for moved_value_type in moved_value_types:
-    #     moved_file = pl.read_csv(moved_value_type)
-    #     for column in moved_file.columns:
-    #         if moved_file[column].dtype == pl.Utf8:  # String columns in Polars
-    #             moved_file = moved_file.with_columns(
-    #                 pl.col(column).map_elements(
-    #                     lambda x: remove_diacritics(x) if x is not None else None,
-    #                     return_dtype=pl.Utf8
-    #                 ).alias(column)
-    #             )
+    for moved_value_type in moved_value_types:
+        moved_file = pl.read_csv(moved_value_type)
+        for column in moved_file.columns:
+            if moved_file[column].dtype == pl.Utf8:  # String columns in Polars
+                moved_file = moved_file.with_columns(
+                    pl.col(column).map_elements(
+                        lambda x: remove_diacritics(x) if x is not None else None,
+                        return_dtype=pl.Utf8
+                    ).alias(column)
+                )
             
-    #     moved_file.write_csv(moved_value_type)
+        moved_file.write_csv(moved_value_type)
     return
 
 
 @app.cell
-def _():
+def _(extract_data_paths, mo, pl):
+    mo.stop()
     # one-time add substance-place-id to required data
-    # moved_data_files = extract_data_paths(dir_path='./data/', file_pattern='*_data.csv')
+    moved_data_files = extract_data_paths(dir_path='./data/', file_pattern='*_data.csv')
 
-    # for moved_data in moved_data_files:
-    #     moved_data_file = pl.read_csv(moved_data, schema_overrides={'VALUE': pl.Float64})
+    for moved_data in moved_data_files:
+        moved_data_file = pl.read_csv(moved_data, schema_overrides={'VALUE': pl.Float64})
 
-    #     sub_place_year_id = str(moved_data).split('_')[1]
+        sub_place_year_id = str(moved_data).split('_')[1]
 
-    #     moved_data_file = moved_data_file.with_columns(pl.lit(sub_place_year_id).alias('SUB_PLACE_YEAR_ID'))
+        moved_data_file = moved_data_file.with_columns(pl.lit(sub_place_year_id).alias('SUB_PLACE_YEAR_ID'))
 
-    #     moved_data_file.write_csv(moved_data)
+        moved_data_file.write_csv(moved_data)
+    return
+
+
+@app.cell
+def _(extract_data_paths, mo, pl):
+    mo.stop()
+    # one-time merge of data, value type and registration files
+    sub_place_year_paths = sorted(extract_data_paths(dir_path='./data/', file_pattern='*_data.csv'))
+    registration_list_paths = sorted(extract_data_paths(dir_path='./data/', file_pattern='*_registration_list.csv'))
+    value_type_paths = sorted(extract_data_paths(dir_path='./data/', file_pattern='*_ValueType.csv'))
+
+    merged_count = 0
+
+    for rl_path in registration_list_paths:
+        yr = rl_path.name[:4]  
+    
+        print(f"\nProcessing registration year: {yr} from {rl_path.name}")
+    
+        try:
+            rl_data = pl.read_csv(rl_path)
+            print(f"  Loaded registration data: {len(rl_data)} rows")
+        except Exception as e:
+            print(f"  ERROR loading {rl_path}: {e}")
+            continue
+    
+        # Look for matching spy and vt files
+        for spy_path, vt_path in zip(sub_place_year_paths, value_type_paths):
+
+            spy_filename = spy_path.name
+            substance = spy_filename.split('_')[1]
+            year_sub = f"{yr}_{substance}"
+        
+            # Check if this combination matches both files
+            if year_sub in spy_filename and year_sub in vt_path.name:
+                print(f"  Found match: {year_sub}")
+                print(f"    SPY: {spy_filename}")
+                print(f"    VT: {vt_path.name}")
+            
+                try:
+                    spy_data = pl.read_csv(spy_path)
+                    vt_data = pl.read_csv(vt_path)
+                
+                    print(f"    SPY data: {len(spy_data)} rows, columns: {spy_data.columns}")
+                    print(f"    VT data: {len(vt_data)} rows, columns: {vt_data.columns}")
+                
+                    merged_df = (
+                        spy_data
+                        .join(rl_data, left_on='SUB_PLACE_YEAR_ID', right_on='SubstanceId', how='left')
+                        .join(vt_data, on='ID_VALUE_TYPE', how='left')
+                    )
+                
+                    output_file = f'./data/processed/{year_sub}_merged_data.csv'
+                    merged_df.write_csv(output_file)
+                    print(f"    SUCCESS: Saved {output_file} with {len(merged_df)} rows")
+                    merged_count += 1
+                
+                except Exception as e:
+                    print(f"    ERROR during merge: {e}")
+
+    print(f"\n{'='*50}")
+    print(f"Total files merged: {merged_count}")
+        
     return
 
 
