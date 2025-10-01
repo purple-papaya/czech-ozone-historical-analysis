@@ -13,13 +13,14 @@ def _():
     from pathlib import Path
     import zipfile
     import os
+    import gc
 
     import marimo as mo
 
     import logging
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-    return Any, Dict, Optional, Path, json, logger, mo, os, pl, zipfile
+    return Any, Dict, Optional, Path, gc, json, logger, mo, os, pl, zipfile
 
 
 @app.cell
@@ -263,15 +264,13 @@ def _(
                 extract_to = Path(str(folder)[:-4])
                 zip_ref.extractall(extract_to)
                 print(f"Extracted: {folder}")
-        
+
             # Delete the zip file after successful extraction
             os.remove(folder)
             print(f"Deleted: {folder}")
-        
+
         except Exception as e:
             print(f"Error with {folder}: {e}")
-
-        
     return (
         extract_data_paths,
         extract_registration_list,
@@ -282,7 +281,7 @@ def _(
 
 @app.cell
 def _(extract_data_paths, extract_registration_list, mo):
-    mo.stop()
+    mo.stop(predicate=True)
     # one-time extraction of registrations lists
     registration_data_paths = extract_data_paths(dir_path='./data/raw/', file_pattern='*.json')
 
@@ -294,7 +293,7 @@ def _(extract_data_paths, extract_registration_list, mo):
 
 @app.cell
 def _(extract_data_paths, mo, unzip_and_delete):
-    mo.stop()
+    mo.stop(predicate=True)
     # one-time unzip and delete zipped folders
     zip_file_data_paths = extract_data_paths(dir_path='./data/raw/', file_pattern='*.zip')
     for zipped_folder in zip_file_data_paths:
@@ -304,7 +303,7 @@ def _(extract_data_paths, mo, unzip_and_delete):
 
 @app.cell
 def _(Path, extract_data_paths, mo):
-    mo.stop()
+    mo.stop(predicate=True)
     # one-time rename and move of required data files
     for folder in Path('./data/raw/').iterdir():
         if folder.is_dir():
@@ -324,13 +323,12 @@ def _(Path, extract_data_paths, mo):
                 value_type_file_data_path.rename(value_type_file_target_name)
             except FileNotFoundError as e:
                 print(e)
-        
     return
 
 
 @app.cell
 def _(extract_data_paths, mo, pl, remove_diacritics):
-    mo.stop()
+    mo.stop(predicate=True)
     # one-time remove diacritics from value type files
     moved_value_types = extract_data_paths(dir_path='./data/', file_pattern='*_ValueType.csv')
 
@@ -344,14 +342,14 @@ def _(extract_data_paths, mo, pl, remove_diacritics):
                         return_dtype=pl.Utf8
                     ).alias(column)
                 )
-            
+
         moved_file.write_csv(moved_value_type)
     return
 
 
 @app.cell
 def _(extract_data_paths, mo, pl):
-    mo.stop()
+    mo.stop(predicate=True)
     # one-time add substance-place-id to required data
     moved_data_files = extract_data_paths(dir_path='./data/', file_pattern='*_data.csv')
 
@@ -368,7 +366,7 @@ def _(extract_data_paths, mo, pl):
 
 @app.cell
 def _(extract_data_paths, mo, pl):
-    mo.stop()
+    mo.stop(predicate=True)
     # one-time merge of data, value type and registration files
     sub_place_year_paths = sorted(extract_data_paths(dir_path='./data/', file_pattern='*_data.csv'))
     registration_list_paths = sorted(extract_data_paths(dir_path='./data/', file_pattern='*_registration_list.csv'))
@@ -378,53 +376,91 @@ def _(extract_data_paths, mo, pl):
 
     for rl_path in registration_list_paths:
         yr = rl_path.name[:4]  
-    
+
         print(f"\nProcessing registration year: {yr} from {rl_path.name}")
-    
+
         try:
             rl_data = pl.read_csv(rl_path)
             print(f"  Loaded registration data: {len(rl_data)} rows")
         except Exception as e:
             print(f"  ERROR loading {rl_path}: {e}")
             continue
-    
+
         # Look for matching spy and vt files
         for spy_path, vt_path in zip(sub_place_year_paths, value_type_paths):
 
             spy_filename = spy_path.name
             substance = spy_filename.split('_')[1]
             year_sub = f"{yr}_{substance}"
-        
+
             # Check if this combination matches both files
             if year_sub in spy_filename and year_sub in vt_path.name:
                 print(f"  Found match: {year_sub}")
                 print(f"    SPY: {spy_filename}")
                 print(f"    VT: {vt_path.name}")
-            
+
                 try:
                     spy_data = pl.read_csv(spy_path)
                     vt_data = pl.read_csv(vt_path)
-                
+
                     print(f"    SPY data: {len(spy_data)} rows, columns: {spy_data.columns}")
                     print(f"    VT data: {len(vt_data)} rows, columns: {vt_data.columns}")
-                
+
                     merged_df = (
                         spy_data
                         .join(rl_data, left_on='SUB_PLACE_YEAR_ID', right_on='SubstanceId', how='left')
                         .join(vt_data, on='ID_VALUE_TYPE', how='left')
                     )
-                
-                    output_file = f'./data/processed/{year_sub}_merged_data.csv'
-                    merged_df.write_csv(output_file)
+
+                    output_file = f'./data/processed/{year_sub}_merged_data.parquet'
+                    merged_df.write_parquet(output_file)
                     print(f"    SUCCESS: Saved {output_file} with {len(merged_df)} rows")
                     merged_count += 1
-                
+
                 except Exception as e:
                     print(f"    ERROR during merge: {e}")
 
     print(f"\n{'='*50}")
     print(f"Total files merged: {merged_count}")
-        
+    return
+
+
+@app.cell
+def _(Path, extract_data_paths, gc, mo, pl):
+    mo.stop(predicate=True)
+    years = pl.int_range(1969, 2025, eager=True)
+    paths = []
+    for y in years:
+        target_file = Path(f'./data/processed/{y}_historical_meteodata.parquet')
+        if not target_file.exists():
+            print(f'Output file {target_file} does not exist. Preparing...')
+            paths.extend(extract_data_paths(dir_path='./data/', file_pattern=f'{y}_*_merged_data.parquet'))
+            dfs = [pl.read_parquet(path) for path in paths]
+            combined_df = pl.concat(dfs, how='vertical')
+            print(f'Files for year {y} were combined.')
+            combined_df.write_parquet(f'./data/processed/{y}_historical_meteodata.parquet')
+            print(f'SUCCESS: Files for year {y} were written in a parquet file.')
+
+            # Clean up memory
+            del dfs
+            del combined_df
+            gc.collect()
+    return
+
+
+@app.cell
+def _(Path, extract_data_paths, mo, pl):
+    mo.stop(predicate=True)
+    target_file_pattern = extract_data_paths(dir_path='./data/', file_pattern=f'./data/processed/*_historical_meteodata.parquet')
+    output_file_final = Path('./data/processed/alltime_historical_meteodata.parquet')
+
+    # Process all files using lazy concat and sink
+    lazy_dfs = [pl.scan_parquet(path) for path in target_file_pattern]
+    combined_lazy = pl.concat(lazy_dfs, how='vertical')
+
+    # Stream to disk without loading into memory
+    combined_lazy.sink_parquet(output_file_final)
+    print('All files combined successfully')
     return
 
 
