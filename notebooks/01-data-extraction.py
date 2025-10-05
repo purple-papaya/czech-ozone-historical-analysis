@@ -465,6 +465,17 @@ def _(Path, extract_data_paths, mo, pl):
 
 
 @app.cell
+def _(mo, pl):
+    mo.stop(predicate=True)
+    ozon = pl.scan_parquet('./data/processed/alltime_historical_meteodata.parquet').filter(
+        (pl.col('SubstanceAbbrev') == 'O3') & (pl.col('SubstanceName') == 'ozon') & (pl.col('NAME') == 'Verifikovana data')
+    )
+
+    ozon.sink_parquet('./data/processed/alltime_historical_ozon.parquet')
+    return
+
+
+@app.cell
 def _():
     return
 
