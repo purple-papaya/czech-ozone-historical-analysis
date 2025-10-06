@@ -429,18 +429,21 @@ def _(extract_data_paths, mo, pl):
 def _(Path, extract_data_paths, gc, mo, pl):
     mo.stop(predicate=True)
     years = pl.int_range(1969, 2025, eager=True)
-    paths = []
     for y in years:
         target_file = Path(f'./data/processed/{y}_historical_meteodata.parquet')
         if not target_file.exists():
             print(f'Output file {target_file} does not exist. Preparing...')
+        
+            paths = []
             paths.extend(extract_data_paths(dir_path='./data/', file_pattern=f'{y}_*_merged_data.parquet'))
+        
             dfs = [pl.read_parquet(path) for path in paths]
             combined_df = pl.concat(dfs, how='vertical')
             print(f'Files for year {y} were combined.')
+        
             combined_df.write_parquet(f'./data/processed/{y}_historical_meteodata.parquet')
             print(f'SUCCESS: Files for year {y} were written in a parquet file.')
-
+        
             # Clean up memory
             del dfs
             del combined_df
@@ -468,7 +471,7 @@ def _(Path, extract_data_paths, mo, pl):
 def _(mo, pl):
     mo.stop(predicate=True)
     ozon = pl.scan_parquet('./data/processed/alltime_historical_meteodata.parquet').filter(
-        (pl.col('SubstanceAbbrev') == 'O3') & (pl.col('SubstanceName') == 'ozon') & (pl.col('NAME') == 'Verifikovana data')
+        (pl.col('SubstanceAbbrev') == 'O3') & (pl.col('SubstanceName') == 'ozon')
     )
 
     df_renamed = ozon.rename(mapping={'START_TIME': 'measurement_date', 'ID_VALUE_TYPE': 'value_type_id', 'VALUE': 'ozone_level', 'SUB_PLACE_YEAR_ID': 'substance_place_year_id', 'RegionCode': 'region_code', 'RegionName': 'region_name', 'LocalityCode': 'locality_code', 'LocalityName': 'locality_name', 'OwnerName': 'owner_name', 'Longitude': 'longitude', 'Latitude': 'latitude', 'Altitude': 'altitude', 'CoordinateReferenceSystem': 'crs', 'Classification': 'locality_classification', 'SubstanceAbbrev': 'substance_abbrev', 'SubstanceName': 'substance_name', 'SubstanceUnit': 'measurement_units', 'DataInterval': 'data_interval', 'SamplingInterval': 'sampling_interval', 'MeasureMethodAbbrev': 'measure_method_abbrev', 'MeasureMethodName': 'measure_method_name', 'ActiveFrom': 'active_from', 'ActiveTo': 'active_to', 'NAME': 'data_quality_flag'})
