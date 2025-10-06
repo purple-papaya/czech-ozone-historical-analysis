@@ -102,5 +102,5 @@ jobs:
         run: |
           pip install uv
           uv sync
-          uv run python -c "import czech_ozone_historical_analysis; print(f'Package version: {czech-ozone-historical-analysis.__version__}')"
+          uv run python -c "import czech_ozone_historical_analysis; print(f'Package version: {czech_ozone_historical_analysis.__version__}')"
           echo "✅ Package is installable!"
