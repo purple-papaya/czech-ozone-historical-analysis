@@ -66,7 +66,7 @@ jobs:
             "README.md"
             "pyproject.toml"
             ".gitignore"
-            "src/czech-ozone-historical-analysis/__init__.py"
+            "src/czech_ozone_historical_analysis/__init__.py"
           )
           
           required_dirs=(
@@ -102,5 +102,5 @@ jobs:
         run: |
           pip install uv
           uv sync
-          uv run python -c "import czech-ozone-historical-analysis; print(f'Package version: {czech-ozone-historical-analysis.__version__}')"
+          uv run python -c "import czech_ozone_historical_analysis; print(f'Package version: {czech-ozone-historical-analysis.__version__}')"
           echo "✅ Package is installable!"
