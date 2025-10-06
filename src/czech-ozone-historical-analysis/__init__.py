@@ -1,3 +1,3 @@
-"""Data Analysis Template Package."""
+"""Czech Ozone Historical Analysis Package."""
 
 __version__ = "0.1.0"
