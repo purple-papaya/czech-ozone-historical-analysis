@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.16.2"
+__generated_with = "0.16.5"
 app = marimo.App(width="medium")
 
 
@@ -471,12 +471,9 @@ def _(mo, pl):
         (pl.col('SubstanceAbbrev') == 'O3') & (pl.col('SubstanceName') == 'ozon') & (pl.col('NAME') == 'Verifikovana data')
     )
 
-    ozon.sink_parquet('./data/processed/alltime_historical_ozon.parquet')
-    return
+    df_renamed = ozon.rename(mapping={'START_TIME': 'measurement_date', 'ID_VALUE_TYPE': 'value_type_id', 'VALUE': 'ozone_level', 'SUB_PLACE_YEAR_ID': 'substance_place_year_id', 'RegionCode': 'region_code', 'RegionName': 'region_name', 'LocalityCode': 'locality_code', 'LocalityName': 'locality_name', 'OwnerName': 'owner_name', 'Longitude': 'longitude', 'Latitude': 'latitude', 'Altitude': 'altitude', 'CoordinateReferenceSystem': 'crs', 'Classification': 'locality_classification', 'SubstanceAbbrev': 'substance_abbrev', 'SubstanceName': 'substance_name', 'SubstanceUnit': 'measurement_units', 'DataInterval': 'data_interval', 'SamplingInterval': 'sampling_interval', 'MeasureMethodAbbrev': 'measure_method_abbrev', 'MeasureMethodName': 'measure_method_name', 'ActiveFrom': 'active_from', 'ActiveTo': 'active_to', 'NAME': 'data_quality_flag'})
 
-
-@app.cell
-def _():
+    df_renamed.sink_parquet('./data/processed/alltime_historical_ozon.parquet')
     return
 
 
